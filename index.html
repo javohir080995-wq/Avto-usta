@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto-Upwork Mini App</title>
+    <!-- Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg-color: var(--tg-theme-bg-color, #ffffff);
+            --text-color: var(--tg-theme-text-color, #000000);
+            --btn-color: var(--tg-theme-button-color, #2481cc);
+            --btn-text: var(--tg-theme-button-text-color, #ffffff);
+            --hint-color: var(--tg-theme-hint-color, #999999);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 16px;
+        }
+
+        .tab-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid var(--btn-color);
+            background: transparent;
+            color: var(--btn-color);
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .tab-btn.active {
+            background: var(--btn-color);
+            color: var(--btn-text);
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+            color: var(--hint-color);
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-sizing: border-box;
+            background: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        .order-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 12px;
+            background: rgba(0, 0, 0, 0.02);
+        }
+
+        .order-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .order-desc {
+            font-size: 14px;
+            color: var(--hint-color);
+            margin-bottom: 8px;
+        }
+
+        .main-btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--btn-color);
+            color: var(--btn-text);
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Tablar: Mijoz va Usta rejimi -->
+    <div class="tab-buttons">
+        <button class="tab-btn active" onclick="switchTab('client')">🚗 Mijoz (E'lon berish)</button>
+        <button class="tab-btn" onclick="switchTab('mechanic')">🔧 Usta (Buyurtmalar)</button>
+    </div>
+
+    <!-- 1. MIJOZ REJIM: Buyurtma berish formasi -->
+    <div id="client-tab">
+        <h3>Yangi e'lon joylash</h3>
+        <form id="orderForm">
+            <div class="form-group">
+                <label>Avtomobil rusumi</label>
+                <input type="text" id="carModel" placeholder="Masalan: Gentra 2022" required>
+            </div>
+            <div class="form-group">
+                <label>Muammo sarlavhasi</label>
+                <input type="text" id="orderTitle" placeholder="Masalan: Mator chirillayapti" required>
+            </div>
+            <div class="form-group">
+                <label>Batafsil ma'lumot</label>
+                <textarea id="orderDesc" rows="3" placeholder="Nosozlik haqida yozing..." required></textarea>
+            </div>
+            <button type="submit" class="main-btn">E'lonni e'lon qilish</button>
+        </form>
+    </div>
+
+    <!-- 2. USTA REJIMI: Ochiq e'lonlar ro'yxati -->
+    <div id="mechanic-tab" style="display: none;">
+        <h3>Ochiq buyurtmalar</h3>
+        <div id="ordersList">
+            <!-- JavaScript orqali yuklanadi -->
+            <p style="color: var(--hint-color);">Buyurtmalar yuklanmoqda...</p>
+        </div>
+    </div>
+
+    <script>
+        // Telegram WebApp ob'ektini initsializatsiya qilish
+        const tg = window.Telegram.WebApp;
+        tg.expand(); // Ekran bo'ylab yoyish
+
+        // Backend server manzili (VPS yoki Ngrok manzilingiz)
+        const BACKEND_URL = "http://127.0.0.1:8000"; 
+
+        // Tablarni almashtirish mantiqiy qismi
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            if (tab === 'client') {
+                document.querySelectorAll('.tab-btn')[0].classList.add('active');
+                document.getElementById('client-tab').style.display = 'block';
+                document.getElementById('mechanic-tab').style.display = 'none';
+            } else {
+                document.querySelectorAll('.tab-btn')[1].classList.add('active');
+                document.getElementById('client-tab').style.display = 'none';
+                document.getElementById('mechanic-tab').style.display = 'block';
+                loadOrders(); // Buyurtmalarni yuklash
+            }
+        }
+
+        // Mijoz e'lon joylashi (API ga POST yuborish)
+        document.getElementById('orderForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const payload = {
+                client_id: tg.initDataUnsafe?.user?.id || 1, // Telegram user ID
+                title: document.getElementById('orderTitle').value,
+                description: document.getElementById('orderDesc').value,
+                car_model: document.getElementById('carModel').value
+            };
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/orders/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    tg.showAlert("E'loningiz muvaffaqiyatli joylashtirildi!");
+                    document.getElementById('orderForm').reset();
+                } else {
+                    tg.showAlert("Xatolik yuz berdi. Qayta urinib ko'ring.");
+                }
+            } catch (err) {
+                console.error(err);
+                tg.showAlert("Serverga ulanib bo'lmadi!");
+            }
+        });
+
+        // Ustalar uchun buyurtmalarni yuklash (API dan GET qilish)
+        async function loadOrders() {
+            const listContainer = document.getElementById('ordersList');
+            try {
+                const response = await fetch(`${BACKEND_URL}/orders/`);
+                const orders = await response.json();
+
+                if (orders.length === 0) {
+                    listContainer.innerHTML = "<p>Hozircha ochiq buyurtmalar yo'q.</p>";
+                    return;
+                }
+
+                listContainer.innerHTML = orders.map(order => `
+                    <div class="order-card">
+                        <div class="order-title">${order.car_model} - ${order.title}</div>
+                        <div class="order-desc">${order.description}</div>
+                        <button class="main-btn" onclick="sendProposal(${order.id})" style="padding: 6px 12px; font-size: 14px;">Taklif yuborish (Bid)</button>
+                    </div>
+                `).join('');
+            } catch (err) {
+                listContainer.innerHTML = "<p>Buyurtmalarni yuklashda xatolik.</p>";
+            }
+        }
+
+        // Usta taklif yuborishi
+        function sendProposal(orderId) {
+            const price = prompt("Xizmat narxini kiriting (so'mda):");
+            const time = prompt("Qancha vaqtda bitirasiz? (masalan: 2 soat):");
+
+            if (price && time) {
+                fetch(`${BACKEND_URL}/proposals/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        order_id: orderId,
+                        mechanic_id: tg.initDataUnsafe?.user?.id || 2,
+                        price: parseFloat(price),
+                        estimated_time: time,
+                        cover_letter: "Ajoyib xizmat ko'rsataman"
+                    })
+                }).then(res => {
+                    if (res.ok) tg.showAlert("Taklifingiz mijozga yuborildi!");
+                });
+            }
+        }
+    </script>
+</body>
+</html>
